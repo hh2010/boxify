@@ -43,6 +43,10 @@ class PlayerBloc extends Bloc<PlayerEvent, MyPlayerState> {
   final AudioPlayer _audioPlayer;
   StreamSubscription<PositionDiscontinuity>? _discontinuitySubscription;
   static const String _playerStateKey = 'player_state';
+  
+  // Periodic save interval in seconds - can be adjusted if needed
+  static const int _periodicSaveIntervalSeconds = 10;
+  Timer? _periodicSaveTimer;
 
   PlayerBloc({
     required AudioPlayer audioPlayer,
@@ -88,15 +92,40 @@ class PlayerBloc extends Bloc<PlayerEvent, MyPlayerState> {
       if (playerState.playing == false && _lastPlayingState == true) {
         _savePlaybackState();
       }
+      
+      // Start/stop periodic save timer based on playback state
+      _updatePeriodicSaveTimer(playerState.playing);
+      
       _lastPlayingState = playerState.playing;
     });
+    
+    // Initialize timer based on initial state
+    _updatePeriodicSaveTimer(_audioPlayer.playing);
   }
 
   bool? _lastPlayingState;
 
+  void _updatePeriodicSaveTimer(bool isPlaying) {
+    // Cancel existing timer if any
+    _periodicSaveTimer?.cancel();
+    
+    // Only start periodic saving if playing
+    if (isPlaying) {
+      _periodicSaveTimer = Timer.periodic(
+        Duration(seconds: _periodicSaveIntervalSeconds), 
+        (_) => _savePlaybackState()
+      );
+      logger.d('Started periodic state saving every $_periodicSaveIntervalSeconds seconds');
+    } else {
+      logger.d('Stopped periodic state saving');
+    }
+  }
+
   @override
   Future<void> close() {
     _discontinuitySubscription?.cancel();
+    _periodicSaveTimer?.cancel();  // Clean up the timer
+    
     // Check if a track is already playing
     if (state.player.playing) {
       _savePlaybackState();
