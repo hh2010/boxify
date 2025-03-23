@@ -74,6 +74,19 @@ class UpdateTrackBackgroundColor extends PlayerEvent {
   List<Object?> get props => [backgroundColor];
 }
 
+class PlaylistEdited extends PlayerEvent {
+  final List<Track> updatedTracks;
+  final String playlistId;
+
+  const PlaylistEdited({
+    required this.updatedTracks,
+    required this.playlistId,
+  });
+
+  @override
+  List<Object?> get props => [updatedTracks, playlistId];
+}
+
 // class LogListen extends PlayerEvent {
 //   const LogListen();
 //   @override

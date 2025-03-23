@@ -59,6 +59,7 @@ class PlayerBloc extends Bloc<PlayerEvent, MyPlayerState> {
     on<SeekToIndex>(_onSeekToIndex);
     on<NotifyAutoAdvance>(_onNotifyAutoAdvance);
     on<UpdateTrackBackgroundColor>(_onUpdateTrackBackgroundColor);
+    on<PlaylistEdited>(_onPlaylistEdited);
 
     _discontinuitySubscription =
         _audioPlayer.positionDiscontinuityStream.listen((discontinuity) {
@@ -488,6 +489,29 @@ class PlayerBloc extends Bloc<PlayerEvent, MyPlayerState> {
       }
     } catch (e) {
       logger.e('Error restoring playback state: $e');
+    }
+  }
+
+  Future<void> _onPlaylistEdited(
+    PlaylistEdited event,
+    Emitter<MyPlayerState> emit,
+  ) async {
+    logger.i('_onPlaylistEdited');
+    emit(state.copyWith(status: PlayerStatus.loading));
+
+    try {
+      await _setAudioSource(event.updatedTracks);
+      emit(state.copyWith(
+        queue: event.updatedTracks,
+        status: PlayerStatus.loaded,
+        player: state.player,
+      ));
+    } catch (err) {
+      logger.e('Error in _onPlaylistEdited: $err');
+      emit(state.copyWith(
+        status: PlayerStatus.error,
+        failure: Failure(code: err.hashCode.toString(), message: err.toString()),
+      ));
     }
   }
 }

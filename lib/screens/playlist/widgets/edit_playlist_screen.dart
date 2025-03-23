@@ -2,6 +2,7 @@ import 'package:boxify/app_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:boxify/blocs/player/player_bloc.dart';
 
 /// This is for reording the tracks in a playlist as well as editing the details of the playlist.
 /// The user can change the name, description, and image of the playlist.
@@ -12,17 +13,76 @@ class EditPlaylistScreen extends StatefulWidget {
 
 class _EditPlaylistScreenState extends State<EditPlaylistScreen>
     with EditPlaylistMixin {
+  List<Track> _localTracks = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final trackBloc = context.read<TrackBloc>();
+    _localTracks = List<Track>.from(trackBloc.state.displayedTracks);
+  }
+
+  void _deleteTrack(Playlist playlist, Track track, int index) {
+    // Update database
+    context.read<PlaylistTracksBloc>().add(
+      RemoveTrackFromPlaylist(playlist: playlist, index: index)
+    );
+
+    // Update UI immediately
+    setState(() {
+      _localTracks.removeAt(index);
+    });
+
+    // Update player state
+    _updatePlayerState(playlist);
+  }
+
+  void _reorderTracks(Playlist playlist, int oldIndex, int newIndex) {
+    // Adjust for ReorderableListView's behavior
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+
+    // Update database
+    context.read<PlaylistTracksBloc>().add(
+      MoveTrack(
+        playlist: playlist,
+        oldIndex: oldIndex,
+        newIndex: newIndex
+      )
+    );
+
+    // Update UI immediately
+    setState(() {
+      final track = _localTracks.removeAt(oldIndex);
+      _localTracks.insert(newIndex, track);
+    });
+    
+    // Update player state
+    _updatePlayerState(playlist);
+  }
+
+  // Helper method to update player state
+  void _updatePlayerState(Playlist playlist) {
+    final playerBloc = context.read<PlayerBloc>();
+    if (playlist.id != null) {
+      playerBloc.add(PlaylistEdited(
+        updatedTracks: _localTracks,
+        playlistId: playlist.id!,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final playlistBloc = context.watch<PlaylistBloc>();
-    final playlistTracksBloc = context.read<PlaylistTracksBloc>();
-    final trackBloc = context.read<TrackBloc>();
     final playlist = playlistBloc.state.editingPlaylist ?? Playlist.empty;
-    final tracks = trackBloc.state.displayedTracks;
+
     titleController.text = playlist.displayTitle ?? 'Playlist name';
     descriptionController.text = playlist.description!.isNotEmpty
         ? playlist.description.toString()
         : 'Add description';
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Core.appColor.widgetBackgroundColor,
@@ -37,152 +97,141 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              if (titleController.text == '') {
-                return;
-              }
-              kIsWeb
-                  ? context.read<PlaylistInfoBloc>().add(
-                        SubmitOnWeb(
-                          playlist: playlist,
-                          description: descriptionController.text,
-                          name: titleController.text,
-                          userId: context.read<UserBloc>().state.user.id,
-                        ),
-                      )
-                  : context.read<PlaylistInfoBloc>().add(
-                        Submit(
-                          playlist: playlist,
-                          description: descriptionController.text,
-                          name: titleController.text,
-                          userId: context.read<UserBloc>().state.user.id,
-                        ),
-                      );
-              Navigator.of(context, rootNavigator: true).pop();
-            },
+            onPressed: () => _savePlaylist(context, playlist),
             child: Text(
               "save".translate(),
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: <Widget>[
-            GestureDetector(
-              onTap: () {
-                // Logic to change playlist image
-                selectPlaylistImage(context);
-              },
-              child: Column(
-                children: [
-                  // PLAYLIST IMAGE
-                  BlocBuilder<PlaylistBloc, PlaylistState>(
-                    builder: (context, state) {
-                      return Container(
-                        height: 120,
-                        width: 120,
-                        color: Colors.grey[900],
-                        child: imageForEditDetails(playlist),
-                      );
-                    },
-                  ),
-                  sizedBox12,
-                  Text(
-                    "changeImage".translate(),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            sizedBox12,
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: TextField(
-                controller: titleController,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: TextField(
-                controller: descriptionController,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            BlocBuilder<PlaylistBloc, PlaylistState>(
-              builder: (context, state) {
-                // if (state.status != PlaylistStatus.viewedPlaylistLoaded) {
-                //   logger.d('playlistbloc.status: ${state.status}');
-                //   return CircularProgressIndicator();
-                // }
+      body: _buildBody(context, playlist),
+    );
+  }
+  
+  void _savePlaylist(BuildContext context, Playlist playlist) {
+    if (titleController.text.isEmpty) return;
 
-                return ReorderableListView.builder(
-                  physics: NeverScrollableScrollPhysics(),
-                  buildDefaultDragHandles: false, // Set this to false
-                  shrinkWrap: true,
-                  onReorder: (int oldIndex, int newIndex) {
-                    // Adjust for ReorderableListView's behavior of incrementing newIndex by one if dragging down the list
-                    if (oldIndex < newIndex) {
-                      newIndex -= 1;
-                    }
-                    // print('oldIndex: $oldIndex newIndex: $newIndex');
+    // Update player state
+    _updatePlayerState(playlist);
 
-                    // Assuming playlistTracksBloc is accessible here. If not, obtain it from the context
-                    playlistTracksBloc.add(
-                      MoveTrack(
-                          playlist: playlist,
-                          oldIndex: oldIndex,
-                          newIndex: newIndex),
-                    );
-                    // Spotify always takes you to the edited playlist after you edit it?
-                    playlistBloc.add(SetViewedPlaylist(playlist: playlist));
-                    trackBloc.add(LoadDisplayedTracks(playlist: playlist));
-                  },
-                  itemCount: tracks.length,
-                  itemBuilder: (context, index) {
-                    final track = tracks[index];
-                    return ListTile(
-                      key: ValueKey(
-                          "value$index"), // Ensure this key is unique for each item for proper reordering
-                      leading: IconButton(
-                        icon: Icon(Icons.remove_circle),
-                        onPressed: () {
-                          playlistTracksBloc.add(RemoveTrackFromPlaylist(
-                              playlist: playlist, index: index));
-                          trackBloc
-                              .add(LoadDisplayedTracks(playlist: playlist));
-                        },
-                      ),
-                      title: Text(track.displayTitle),
-                      subtitle: Text(track.artist ?? ''),
-                      // Wrap trailing icon with ReorderableDragStartListener
-                      trailing: ReorderableDragStartListener(
-                        index: index,
-                        // You can customize the child widget to your needs
-                        child: Icon(Icons.drag_handle),
-                      ),
-                    );
-                  },
-                );
-              },
+    // Save playlist info
+    context.read<PlaylistInfoBloc>().add(
+      kIsWeb 
+          ? SubmitOnWeb(
+              playlist: playlist,
+              description: descriptionController.text,
+              name: titleController.text,
+              userId: context.read<UserBloc>().state.user.id,
+            )
+          : Submit(
+              playlist: playlist,
+              description: descriptionController.text,
+              name: titleController.text,
+              userId: context.read<UserBloc>().state.user.id,
+            )
+    );
+
+    // Update playlist view
+    context.read<PlaylistBloc>().add(SetViewedPlaylist(playlist: playlist));
+    context.read<TrackBloc>().add(LoadDisplayedTracks(playlist: playlist));
+
+    Navigator.of(context, rootNavigator: true).pop();
+  }
+
+  Widget _buildBody(BuildContext context, Playlist playlist) {
+    return SingleChildScrollView(
+      child: Column(
+        children: <Widget>[
+          _buildImageSelector(context, playlist),
+          sizedBox12,
+          _buildTitleField(),
+          _buildDescriptionField(),
+          _buildTracksList(context, playlist),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageSelector(BuildContext context, Playlist playlist) {
+    return GestureDetector(
+      onTap: () => selectPlaylistImage(context),
+      child: Column(
+        children: [
+          BlocBuilder<PlaylistBloc, PlaylistState>(
+            builder: (context, state) {
+              return Container(
+                height: 120,
+                width: 120,
+                color: Colors.grey[900],
+                child: imageForEditDetails(playlist),
+              );
+            },
+          ),
+          sizedBox12,
+          Text(
+            "changeImage".translate(),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTitleField() {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: TextField(
+        controller: titleController,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.bold,
         ),
       ),
+    );
+  }
+
+  Widget _buildDescriptionField() {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: TextField(
+        controller: descriptionController,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTracksList(BuildContext context, Playlist playlist) {
+    return ReorderableListView.builder(
+      physics: NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: false,
+      shrinkWrap: true,
+      onReorder: (oldIndex, newIndex) => _reorderTracks(playlist, oldIndex, newIndex),
+      itemCount: _localTracks.length,
+      itemBuilder: (context, index) {
+        final track = _localTracks[index];
+        return ListTile(
+          key: ValueKey(track.uuid ?? "value$index"),
+          leading: IconButton(
+            icon: Icon(Icons.remove_circle),
+            onPressed: () => _deleteTrack(playlist, track, index),
+          ),
+          title: Text(track.displayTitle),
+          subtitle: Text(track.artist ?? ''),
+          trailing: ReorderableDragStartListener(
+            index: index,
+            child: Icon(Icons.drag_handle),
+          ),
+        );
+      },
     );
   }
 }
