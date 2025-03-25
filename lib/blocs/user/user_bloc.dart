@@ -93,7 +93,17 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     }
 
     try {
-      final user = await _userRepository.getUserWithId(userId: userId);
+      // Is there a cached user available?
+      // We use the cached user first as it's much faster to load
+      // then we can fetch the updated user from the server
+      User? user = await _userRepository.getUserFromCache(userId);
+      final isSelfCached = user != null;
+
+      // User couldn't be found in the cache, so we need to fetch it right away (synchronously)
+      if (!isSelfCached) {
+        user = await _userRepository.getSelfUser(userId);
+      }
+
       final ratings =
           await _trackRepository.getUserRatings(userId, _firebaseFirestore);
 
@@ -102,6 +112,18 @@ class UserBloc extends Bloc<UserEvent, UserState> {
         ratings: ratings,
         status: UserStatus.loaded,
       ));
+
+      // Now, if the user wasn't cached previously, fetch the user from Firestore.
+      // this is done once UserStatus.loaded is emitted so this is not blocking the UI
+      if (isSelfCached) {
+        user = await _userRepository.getSelfUser(userId);
+        emit(state.copyWith(user: user));
+
+        // Check if the user roles have changed between cached and server user
+        if (event.onRolesUpdated != null && user.roles != state.user.roles) {
+          event.onRolesUpdated!();
+        }
+      }
     } on NoConnectionException catch (e) {
       logger.e('NoConnectionException: $e');
       emit(state.copyWith(
@@ -136,6 +158,7 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     logger.i('_loadAdvancedUser');
     emit(state.copyWith(status: UserStatus.loading));
 
+    final startTime = DateTime.now();
     final userId = _authBloc.state.user!.uid;
 
     if (event.clearCache == true) {
@@ -145,7 +168,17 @@ class UserBloc extends Bloc<UserEvent, UserState> {
     }
 
     try {
-      final user = await _userRepository.getUserWithId(userId: userId);
+      // Is there a cached user available?
+      // We use the cached user first since it's much faster to load
+      // then we can load the updated user from the server
+      User? user = await _userRepository.getUserFromCache(userId);
+      final isSelfCached = user != null;
+
+      // User couldn't be found in the cache, so we need to fetch it right away (synchronously)
+      if (!isSelfCached) {
+        user = await _userRepository.getSelfUser(userId);
+      }
+
       final ratings =
           await _trackRepository.getUserRatings(userId, _firebaseFirestore);
       final allArtists = await _userRepository.getAllArtists();
@@ -161,6 +194,15 @@ class UserBloc extends Bloc<UserEvent, UserState> {
         allArtists: allArtists,
         status: UserStatus.loaded,
       ));
+
+      logRunTime(startTime, 'load user');
+
+      // Now, if the user wasn't cached previously, fetch the user from Firestore.
+      // this is done once UserStatus.loaded is emitted so this is not blocking the UI
+      if (isSelfCached) {
+        user = await _userRepository.getSelfUser(userId);
+        emit(state.copyWith(user: user));
+      }
     } on NoConnectionException catch (e) {
       logger.e('NoConnectionException: $e');
       emit(state.copyWith(
@@ -307,85 +349,5 @@ class UserBloc extends Bloc<UserEvent, UserState> {
       // ... Update state with error information as needed
       return false;
     }
-  }
-
-  /// Loads from cache or if cache is null, fetches data from the rc.com server
-  /// or directly from Firestore.
-  /// And saves it to the cache.
-  /// User, tracks, bundles, playlists, ratings, and artists.
-  Future<List<dynamic>> loadData(
-    FirebaseFirestore firebaseFirestore,
-    String userId, {
-    bool forceFetch = false,
-    DateTime? serverRatingsUpdated,
-  }) async {
-    logger.i('loadData for $userId with forceFetch = $forceFetch');
-    User? cachedUser;
-    // List<Track>? cachedTracks;
-    // List<Bundle>? bundles;
-    // List<Playlist>? playlists;
-    List<Rating>? ratings;
-    List<User>? artists;
-
-    // forceFetch = true;
-    // _cacheHelper.clearAll();
-    // _cacheHelper.clearSpecific(CacheHelper.KEY_USER);
-
-    // final serverTimestamps =
-    //     await _metaDataRepository.getServerTimestamps(userId);
-
-    // TODO
-    // Fetch data from cache only if forceFetch is false
-    if (!forceFetch) {
-      // cachedUser = await _cacheHelper.getUser(serverUserUpdated!);
-      // cachedTracks = await _cacheHelper.getTracks(serverTimestamps['tracks']!);
-      // bundles = await _cacheHelper.getBundles();
-      // // playlists = await _cacheHelper.fetchPlaylists(user!.id);
-      ratings = await _cacheHelper.getRatings(userId);
-      // artists = await _cacheHelper.getArtists(serverUsersUpdated!);
-
-      // logger.i('loadData: got cache');
-    }
-
-    // For each data object (user, tracks, bundles, etc.), fetch it if it's null
-    // (not in the cache or the cache is expired), otherwise, use the existing cached
-    // value, and add it to the 'responses' list
-    final responses = await Future.wait([
-      // User
-      _userRepository.getUserWithId(userId: userId),
-
-      if (ratings == null)
-        _trackRepository.getUserRatings(userId, firebaseFirestore)
-      else
-        Future.value(ratings),
-      _userRepository.getAllArtists(),
-    ]);
-    logger.i('loadData: got responses');
-
-    final User user;
-    // final List<Track> tracks;
-
-    user = responses[0] as User;
-    // tracks = responses[1] ;
-
-    if (cachedUser == null) {
-      logger.i('no cachedUser!');
-
-      // Save the fetched data to cache if it was not available
-      await _cacheHelper.saveUser(user);
-    } else {
-      logger.i('there is a cachedUser!');
-    }
-    logger.i('user.username: ${user.username}');
-
-    if (ratings == null) {
-      ratings = responses[1] as List<Rating>;
-      await _cacheHelper.saveRatings(ratings, _authBloc.state.user!.uid);
-    }
-    artists = responses[2] as List<User>;
-    await _cacheHelper.saveArtists(artists);
-    logger.i('_cacheHelper.saveArtists(artists)');
-
-    return [user, ratings, artists];
   }
 }

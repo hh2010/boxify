@@ -65,8 +65,12 @@ class LoadUser extends UserEvent {
   final bool clearCache;
   final DateTime serverRatingsUpdated;
 
+  /// Callback to be called when the user roles are updated (basic app only)
+  final VoidCallback? onRolesUpdated;
+
   const LoadUser({
     this.clearCache = false,
+    this.onRolesUpdated,
     required this.serverRatingsUpdated,
   });
 

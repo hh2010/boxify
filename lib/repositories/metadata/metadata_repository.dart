@@ -14,6 +14,11 @@ class DataFetchException implements Exception {
   DataFetchException(this.message);
 }
 
+class CacheException implements Exception {
+  final String message;
+  CacheException(this.message);
+}
+
 class MetaDataRepository extends BaseMetaDataRepository {
   MetaDataRepository({
     FirebaseFirestore? firebaseFirestore,

@@ -92,22 +92,52 @@ class UserRepository extends BaseUserRepository {
     // logger.i(user.banned);
   }
 
-  // /// Fetches a user with the given [userId] from the Firestore collection.
+  /// Fetches a user with the given [userId] from the Firestore collection
+  /// or returns a cached user if offline.
+  /// When fetching the currently logged-in user, it is better to use the [getSelfUser] method.
   @override
   Future<User> getUserWithId({required String userId}) async {
     logger.i('getUserWithId: $userId');
 
     if (ConnectivityManager.instance.currentStatus == ConnectivityResult.none) {
       // Offline, get user from cache
-      final cachedUser = await _cacheHelper.getUser(userId);
-      if (cachedUser != null) {
-        logger.i('Returning cached user data');
-        return cachedUser;
-      } else {
-        logger.e('No internet connection and no cached user data.');
-        throw NoConnectionException(
-            'No internet connection and no cached user data.');
+      return getUserFromCacheWithException(userId);
+    } else {
+      // Online, fetch from Firestore
+      try {
+        final userDocRef =
+            _firebaseFirestore.collection(Paths.users).doc(userId);
+        final doc = await userDocRef.get();
+
+        if (doc.exists) {
+          // User exists
+          final user = User.fromDocument(doc);
+          return user;
+        } else {
+          logger.i('No user doc found, returning empty user');
+          final user = User.empty.copyWith(id: userId);
+          return user;
+        }
+      } catch (e) {
+        logger.e('Error fetching user data: $e');
+        return getUserFromCacheWithException(userId);
       }
+    }
+  }
+
+  /// Fetches the currently logged-in user from Firestore.
+  /// If offline, it attempts to get the user from the cache.
+  /// If the user is not found in the cache, it returns an empty user.
+  ///
+  /// This method will update the user's last seen timestamp in Firestore
+  /// and cache the user data, unlike the [getUserWithId] method.
+  @override
+  Future<User> getSelfUser(String userId) async {
+    logger.i('getSelfUser: $userId');
+
+    if (ConnectivityManager.instance.currentStatus == ConnectivityResult.none) {
+      // Offline, get user from cache
+      return getUserFromCacheWithException(userId);
     } else {
       // Online, fetch from Firestore
       try {
@@ -131,91 +161,27 @@ class UserRepository extends BaseUserRepository {
         }
       } catch (e) {
         logger.e('Error fetching user data: $e');
-        // Attempt to get cached user
-        final cachedUser = await _cacheHelper.getUser(userId);
-        if (cachedUser != null) {
-          logger.i('Returning cached user data after exception');
-          return cachedUser;
-        } else {
-          throw DataFetchException(
-              'Failed to fetch user data and no cached data available.');
-        }
+        return getUserFromCacheWithException(userId);
       }
     }
   }
 
-  // /// Updates the user's last seen timestamp if they exist.
-  // /// Returns an empty user if they don't exist.
-  // @override
-  // Future<User> getUserWithId({required String userId}) async {
-  //   logger.i('getUserWithId: $userId');
+  /// Returns user from cache, or raises an exception if not found.
+  Future<User> getUserFromCacheWithException(String userId) async {
+    final cachedUser = await getUserFromCache(userId);
+    if (cachedUser != null) {
+      logger.i('Returning cached user data');
+      return cachedUser;
+    } else {
+      logger.e('No cached user data available.');
+      throw CacheException('No cached user data available.');
+    }
+  }
 
-  //   // Check connectivity
-  //   if (ConnectivityManager.instance.currentStatus == ConnectivityResult.none) {
-  //     // Offline, attempt to get user from cache
-  //     final cachedUser = await _cacheHelper.getUser(userId);
-  //     if (cachedUser != null) {
-  //       logger.i('Returning cached user data');
-  //       return cachedUser;
-  //     } else {
-  //       // No cached data, return a default or empty user
-  //       logger.e('No internet and no cached user data available.');
-  //       return User.empty.copyWith(id: userId);
-  //     }
-  //   } else {
-  //     // Online, fetch from Firestore
-  //     try {
-  //       final userDocRef =
-  //           _firebaseFirestore.collection(Paths.users).doc(userId);
-  //       final doc = await userDocRef.get();
-
-  //       if (doc.exists) {
-  //         logger.i('User exists, updating lastSeen timestamp');
-  //         await userDocRef.update({'lastSeen': DateTime.now()});
-  //         final user = User.fromDocument(doc);
-
-  //         // Save user to cache
-  //         await _cacheHelper.saveUser(user);
-
-  //         return user;
-  //       } else {
-  //         logger.i('No user doc found, must be anonymous');
-  //         final user = User.empty.copyWith(id: userId);
-  //         return user;
-  //       }
-  //     } catch (e) {
-  //       logger.e('Error fetching user data: $e');
-  //       // Attempt to get cached user
-  //       final cachedUser = await _cacheHelper.getUser(userId);
-  //       if (cachedUser != null) {
-  //         logger.i('Returning cached user data after exception');
-  //         return cachedUser;
-  //       } else {
-  //         return User.empty.copyWith(id: userId);
-  //       }
-  //     }
-  //   }
-  // }
-
-  // @override
-  // Future<User> getUserWithId({required String userId}) async {
-  //   logger.i('getUserWithId: $userId');
-  //   final userDocRef = _firebaseFirestore.collection(Paths.users).doc(userId);
-  //   final doc = await userDocRef.get();
-
-  //   // Check if the user document exists before updating the lastSeen timestamp.
-  //   if (doc.exists) {
-  //     logger.i('User exists, updating lastSeen timestamp');
-  //     await userDocRef.update({'lastSeen': DateTime.now()});
-  //     return User.fromDocument(doc);
-  //   } else {
-  //     logger.i('No user doc found, must be anonymous or Rivify');
-  //     final user = User.empty.copyWith(
-  //       id: userId,
-  //     );
-  //     return user;
-  //   }
-  // }
+  /// Returns a user from Firestore or cache. Returns null if not found.
+  Future<User?> getUserFromCache(String userId) async {
+    return _cacheHelper.getUser(userId);
+  }
 
   @override
   Future<void> updateUser({required User? user}) async {
@@ -329,14 +295,7 @@ class UserRepository extends BaseUserRepository {
 
     if (ConnectivityManager.instance.currentStatus == ConnectivityResult.none) {
       // Offline, get artists from cache
-      final cachedArtists = await _cacheHelper.getArtists();
-      if (cachedArtists != null) {
-        logger.i('Returning cached artists');
-        return cachedArtists;
-      } else {
-        logger.e('No internet connection and no cached artists available.');
-        return [];
-      }
+      return getArtistsFromCache();
     } else {
       // Online, fetch from Firestore
       try {
@@ -355,14 +314,20 @@ class UserRepository extends BaseUserRepository {
       } catch (e) {
         logger.e('Error fetching artists: $e');
         // Return cached artists if available
-        final cachedArtists = await _cacheHelper.getArtists();
-        if (cachedArtists != null) {
-          logger.i('Returning cached artists after exception');
-          return cachedArtists;
-        } else {
-          return [];
-        }
+        return getArtistsFromCache();
       }
+    }
+  }
+
+  /// Returns artists from cache
+  Future<List<User>> getArtistsFromCache() async {
+    final cachedArtists = await _cacheHelper.getArtists();
+    if (cachedArtists != null) {
+      logger.i('Returning cached artists');
+      return cachedArtists;
+    } else {
+      logger.e('No cached artists available.');
+      return [];
     }
   }
 

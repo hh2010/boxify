@@ -71,7 +71,7 @@ class _BasePlaylistScreenState extends State<BasePlaylistScreen>
         }
       } catch (e) {
         if (widget.playlistId != context.read<AuthBloc>().state.user!.uid) {
-          logger.e('Error finding playlist with id: $widget.playlistId  $e');
+          logger.e('Error finding playlist with id: ${widget.playlistId}  $e');
         }
       }
     }

@@ -142,17 +142,20 @@ class PlaylistBloc extends Bloc<PlaylistEvent, PlaylistState> {
     logger.i('_onLoadAllPlaylists');
     emit(state.copyWith(status: PlaylistStatus.playlistsLoading));
 
+    final userId = _authBloc.state.user!.uid;
+
     if (event.clearCache) {
       logger.i('clearing playlists cache');
-      await _cacheHelper.clearSpecific(
-          CacheHelper.keyForPlaylists(_authBloc.state.user!.uid));
+      await _cacheHelper.clearSpecific(CacheHelper.keyForPlaylists(userId));
     }
 
     List<String>? roles;
 
     if (Core.app.type == AppType.basic) {
-      final user = await _userRepository.getUserWithId(
-          userId: _authBloc.state.user!.uid);
+      // Get the roles of the user from the cache
+      User? user = await _userRepository.getUserFromCache(userId);
+      // User not in cache: get from firestore (should not happen, but just in case)
+      user ??= await _userRepository.getSelfUser(userId);
       roles = user.roles;
     }
 
@@ -281,6 +284,8 @@ class PlaylistBloc extends Bloc<PlaylistEvent, PlaylistState> {
     List<Playlist> followedPlaylists;
     List<Playlist> recommendedPlaylists;
 
+    final userId = _authBloc.state.user!.uid;
+
     final result =
         _playlistHelper.getFollowedPlaylists(event.user, state.allPlaylists);
 
@@ -298,9 +303,12 @@ class PlaylistBloc extends Bloc<PlaylistEvent, PlaylistState> {
         _playlistHelper.getRecommendedPlaylists(event.user, state.allPlaylists);
 
     if (Core.app.type == AppType.basic) {
-      final user = await _userRepository.getUserWithId(
-          userId: _authBloc.state.user!.uid);
+      // Get the roles of the user from the cache
+      User? user = await _userRepository.getUserFromCache(userId);
+      // User not in cache: get from firestore (should not happen, but just in case)
+      user ??= await _userRepository.getSelfUser(userId);
       final roles = user.roles;
+
       followedPlaylists = filterPlaylistsByRole(roles, followedPlaylists);
       recommendedPlaylists = filterPlaylistsByRole(roles, recommendedPlaylists);
     }

@@ -115,9 +115,8 @@ class LoginScreen extends StatelessWidget {
       logger.i(
         'login: authUser.emailVerified so fetching user record to check their username',
       );
-      final user = await context
-          .read<UserRepository>()
-          .getUserWithId(userId: authUser.uid);
+      final user =
+          await context.read<UserRepository>().getSelfUser(authUser.uid);
       // logger.i('login: user fetched from firestore = $user');
 
       /// User still does not have a username or has the username 'Lurker'

@@ -394,8 +394,13 @@ class MyApp extends StatelessWidget {
                   LoadUser(
                       clearCache: marketBloc.state.status ==
                           MarketStatus.bundlePurchased,
-                      serverRatingsUpdated:
-                          state.serverTimestamps['ratings2']!),
+                      serverRatingsUpdated: state.serverTimestamps['ratings2']!,
+                      onRolesUpdated: () {
+                        // User roles have changed, reload all playlists
+                        final playlistBloc = context.read<PlaylistBloc>();
+                        playlistBloc.add(
+                            LoadAllPlaylists(userId: userBloc.state.user.id));
+                      }),
                 );
               }
             }
