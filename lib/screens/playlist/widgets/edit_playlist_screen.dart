@@ -112,29 +112,33 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
   void _savePlaylist(BuildContext context, Playlist playlist) {
     if (titleController.text.isEmpty) return;
 
-    // Update player state
-    _updatePlayerState(playlist);
-
-    // Save playlist info
+    final updatedPlaylist = playlist.copyWith(
+      displayTitle: titleController.text,
+      description: descriptionController.text,
+      trackIds: _localTracks.map((t) => t.uuid!).toList(), // Ensure deleted tracks are removed
+    );
+    
+    // Save playlist to database
     context.read<PlaylistInfoBloc>().add(
       kIsWeb 
           ? SubmitOnWeb(
-              playlist: playlist,
+              playlist: updatedPlaylist,
               description: descriptionController.text,
               name: titleController.text,
               userId: context.read<UserBloc>().state.user.id,
             )
           : Submit(
-              playlist: playlist,
+              playlist: updatedPlaylist,
               description: descriptionController.text,
               name: titleController.text,
               userId: context.read<UserBloc>().state.user.id,
             )
     );
-
-    // Update playlist view
-    context.read<PlaylistBloc>().add(SetViewedPlaylist(playlist: playlist));
-    context.read<TrackBloc>().add(LoadDisplayedTracks(playlist: playlist));
+    
+    _updatePlayerState(updatedPlaylist);
+    context.read<TrackBloc>().add(UpdateDisplayedTracks(tracks: _localTracks));
+    context.read<PlaylistBloc>().add(SetViewedPlaylist(playlist: updatedPlaylist));
+    context.read<TrackBloc>().add(LoadDisplayedTracks(playlist: updatedPlaylist));
 
     Navigator.of(context, rootNavigator: true).pop();
   }

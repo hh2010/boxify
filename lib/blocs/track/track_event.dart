@@ -148,3 +148,14 @@ class UpdateTracks extends TrackEvent {
   @override
   List<Object> get props => [updatedTracks];
 }
+
+class UpdateDisplayedTracks extends TrackEvent {
+  final List<Track> tracks;
+
+  /// Immediately updates the displayedTracks in the state with the provided list of tracks
+  /// This is useful for UI updates without waiting for a database refresh
+  const UpdateDisplayedTracks({required this.tracks});
+
+  @override
+  List<Object> get props => [tracks];
+}

@@ -39,10 +39,33 @@ class TrackBloc extends Bloc<TrackEvent, TrackState> {
     on<ReplaceSelectedTracksWithSearchResults>(
         _onReplaceSelectedTracksWithSearchResults);
     on<SetMouseClickedTrackId>(_onSetMouseClickedTrackId);
-    // on<SetTrackIdPassedToUrl>(_onSetTrackIdPassedToUrl);
     on<TrackReset>(_onTrackReset);
     on<UpdateTracks>(_onUpdateTracks);
+    on<UpdateDisplayedTracks>(_onUpdateDisplayedTracks);
   }
+  
+  void _onUpdateDisplayedTracks(
+    UpdateDisplayedTracks event,
+    Emitter<TrackState> emit,
+  ) {
+    logger.i('_onUpdateDisplayedTracks');
+    emit(state.copyWith(status: TrackStatus.displayedTracksLoading));
+    
+    final displayedTracks = event.tracks;
+    final displayedTracksPlayable = displayedTracks.where((track) {
+      return track.available == true;
+    }).toList();
+    
+    emit(
+      state.copyWith(
+        displayedTracks: displayedTracks,
+        displayedTracksPlayable: displayedTracksPlayable,
+        status: TrackStatus.displayedTracksLoaded,
+      ),
+    );
+    logger.i('Updated displayedTracks with ${displayedTracks.length} tracks');
+  }
+  
   void _onUpdateTracks(
     UpdateTracks event,
     Emitter<TrackState> emit,
@@ -210,14 +233,6 @@ class TrackBloc extends Bloc<TrackEvent, TrackState> {
         logger.e('TrackBloc._onLoadDisplayedTracks: $err No trackId: $trackId');
       }
     }
-
-    /// I moved this to playerservice.dart
-    // // If you're displayling the tracks for the 4 or 5 star playlist,
-    // // sort the tracks by displayTitle
-    // if (event.playlist.id?.contains('_4star') == true ||
-    //     event.playlist.id?.contains('_5star') == true) {
-    //   playlistTracks.sort((a, b) => a.displayTitle.compareTo(b.displayTitle));
-    // }
 
     _trackHelper.updateTrackLinksBulk(
         playlistTracks, _authBloc.state.user!.uid);
