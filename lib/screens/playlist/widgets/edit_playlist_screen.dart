@@ -223,7 +223,7 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
       itemBuilder: (context, index) {
         final track = _localTracks[index];
         return ListTile(
-          key: ValueKey(track.uuid ?? "value$index"),
+          key: ValueKey("track_$index"),
           leading: IconButton(
             icon: Icon(Icons.remove_circle),
             onPressed: () => _deleteTrack(playlist, track, index),
