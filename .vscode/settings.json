@@ -20,5 +20,4 @@
   },
   "peacock.color": "#00ffff",
   "java.configuration.updateBuildConfiguration": "interactive",
-  "dart.flutterSdkPath": ".fvm/versions/3.24.1"
 }
