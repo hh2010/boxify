@@ -20,18 +20,36 @@ class _SmallLibraryScreenForAddingPlaylistsState
     logger.i(
       'in SmallLibraryScreenForAddingPlaylists builder. This is your list of playlists in the addtoplaylist screen.',
     );
-    // final trackBloc = context.read<TrackBloc>();
-    // final playlistTracksBloc = context.read<PlaylistTracksBloc>();
-    return BlocBuilder<PlaylistBloc, PlaylistState>(
-      builder: (context, state) {
-        return Container(
-          color: Core.appColor.widgetBackgroundColor,
-          child: SizedBox(
-              height: device.size.height,
-              width: device.size.width,
-              child: SmallLibraryBody(
-                type: LibraryScreenType.addToPlaylist,
-              )),
+
+    return BlocConsumer<PlaylistTracksBloc, PlaylistTracksState>(
+      listenWhen: (previous, current) => previous.status != current.status,
+      listener: (context, state) {
+        // Handle successful track addition
+        if (state.status == PlaylistTracksStatus.updated &&
+            state.updatedPlaylist != null) {
+          // Show success message and pop screen
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Navigator.of(context).pop();
+            showMySnack(
+              context,
+              message: 'Added to ${state.updatedPlaylist!.name}',
+            );
+          });
+        }
+      },
+      builder: (context, playlistTracksState) {
+        return BlocBuilder<PlaylistBloc, PlaylistState>(
+          builder: (context, state) {
+            return Container(
+              color: Core.appColor.widgetBackgroundColor,
+              child: SizedBox(
+                  height: device.size.height,
+                  width: device.size.width,
+                  child: SmallLibraryBody(
+                    type: LibraryScreenType.addToPlaylist,
+                  )),
+            );
+          },
         );
       },
     );

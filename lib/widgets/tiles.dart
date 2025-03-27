@@ -1,6 +1,7 @@
 import 'package:boxify/app_core.dart';
 import 'package:charcode/charcode.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/src/provider.dart';
 
@@ -105,24 +106,50 @@ class DeletePlaylistTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       onTap: () {
-        context.read<LibraryBloc>().add(
-              RemovePlaylist(
-                playlist: playlist,
-                user: context.read<UserBloc>().state.user,
-              ),
-            );
-        context.read<LibraryBloc>().add(
-              DeletePlaylist(
-                playlistId: playlist.id!,
-              ),
-            );
-        // close the overflow screen
-        context.pop();
+        // Show confirmation dialog before deleting
+        showDialog(
+          context: context,
+          builder: (BuildContext dialogContext) {
+            return AlertDialog(
+              title: Text('deletePlaylist'.translate()),
+              content: Text('areYouSureDeletePlaylist'.translate()),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: Text('cancel'.translate()),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
 
-        // // close the deleted playlist screen
-        // context.pop(); // This was cauasing a 'nothing to pop' error
+                    // Delete the playlist
+                    context.read<LibraryBloc>().add(
+                          RemovePlaylist(
+                            playlist: playlist,
+                            user: context.read<UserBloc>().state.user,
+                          ),
+                        );
+                    context.read<LibraryBloc>().add(
+                          DeletePlaylist(
+                            playlistId: playlist.id!,
+                          ),
+                        );
 
-        showMySnack(context, message: 'Deleted ${playlist.name} playlist');
+                    // Close the overflow screen
+                    if (context.mounted) {
+                      context.pop();
+                      showMySnack(context,
+                          message: 'Deleted ${playlist.name} playlist');
+                    }
+                  },
+                  child: Text('delete'.translate()),
+                ),
+              ],
+            );
+          },
+        );
       },
       leading: const Icon(
         Icons.cancel_outlined,
@@ -132,7 +159,6 @@ class DeletePlaylistTile extends StatelessWidget {
         'deletePlaylist'.translate(),
         style: TextStyle(
           fontSize: 14,
-          // fontWeight: FontWeight.bold,
           color: Colors.white,
         ),
       ),
@@ -304,54 +330,119 @@ class PlaylistToBeAddedToTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final playlistBloc = context.read<PlaylistBloc>();
     final state = playlistBloc.state;
-    return ListTile(
-      key: Key('${playlist.id}'),
-      leading: imageOrIcon(
-        imageUrl: playlist.imageUrl,
-        filename: playlist.imageFilename,
-        height: 60,
-        width: 60,
-      ),
-      title: Text(
-        playlist.name ?? '',
-        style: playlist.id == state.viewedPlaylist?.id
-            ? const TextStyle(
-                color: Colors.blueAccent,
-                fontSize: 15,
-              )
-            : const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
+
+    return BlocConsumer<PlaylistTracksBloc, PlaylistTracksState>(
+      listenWhen: (previous, current) => previous.status != current.status,
+      listener: (context, state) {
+        // Show dialog when duplicate track is detected
+        if (state.status == PlaylistTracksStatus.duplicate) {
+          // Build the dialog outside of this scope to avoid context issues
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            showDialog(
+              context: context,
+              builder: (BuildContext dialogContext) {
+                final trackTitle =
+                    state.duplicateTrack?.displayTitle ?? 'This track';
+                final playlistName =
+                    playlist.name ?? playlist.displayTitle ?? 'this playlist';
+                return AlertDialog(
+                  title: Text('duplicateTrack'.translate()),
+                  content: Text('duplicateTrackWarning'
+                      .translate()
+                      .replaceAll('{trackTitle}',
+                          state.duplicateTrack?.displayTitle ?? 'This track')
+                      .replaceAll(
+                          '{playlistName}',
+                          playlist.name ??
+                              playlist.displayTitle ??
+                              'this playlist')),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                        context
+                            .read<PlaylistTracksBloc>()
+                            .add(PlaylistTracksReset());
+                      },
+                      child: Text('cancel'.translate()),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                        // Force add the track anyway
+                        context.read<PlaylistTracksBloc>().add(
+                              AddTrackToPlaylist(
+                                playlist: playlist,
+                                track: state.trackToAdd!,
+                                forceAdd: true,
+                              ),
+                            );
+                        if (context.mounted) {
+                          context.pop();
+                          showMySnack(context,
+                              message: 'Added to ${playlist.name}');
+                        }
+                      },
+                      child: Text('addAnyway'.translate()),
+                    ),
+                  ],
+                );
+              },
+            );
+          });
+        }
+      },
+      builder: (context, playlistTracksState) {
+        return ListTile(
+          key: Key('${playlist.id}'),
+          leading: imageOrIcon(
+            imageUrl: playlist.imageUrl,
+            filename: playlist.imageFilename,
+            height: 60,
+            width: 60,
+          ),
+          title: Text(
+            playlist.name ?? '',
+            style: playlist.id == state.viewedPlaylist?.id
+                ? const TextStyle(
+                    color: Colors.blueAccent,
+                    fontSize: 15,
+                  )
+                : const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                  ),
+          ),
+          subtitle: Row(
+            children: [
+              Text(
+                'Playlist ${String.fromCharCode($bull)} ',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 12,
+                ),
               ),
-      ),
-      subtitle: Row(
-        children: [
-          Text(
-            'Playlist ${String.fromCharCode($bull)} ',
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 12,
-            ),
+              Text(
+                playlist.owner?['username'] ?? 'Rivers',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
-          Text(
-            playlist.owner?['username'] ?? 'Rivers',
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-      onTap: () {
-        final playlistTracksBloc = context.read<PlaylistTracksBloc>();
-        playlistTracksBloc.add(
-          AddTrackToPlaylist(
-            playlist: playlist,
-            track: playlistTracksBloc.state.trackToAdd!,
-          ),
+          onTap: () {
+            final playlistTracksBloc = context.read<PlaylistTracksBloc>();
+            playlistTracksBloc.add(
+              AddTrackToPlaylist(
+                playlist: playlist,
+                track: playlistTracksBloc.state.trackToAdd!,
+              ),
+            );
+            // We won't pop or show snackbar immediately here anymore
+            // That will happen after we check for duplicates
+          },
         );
-        context.pop();
-        showMySnack(context, message: 'Added to ${playlist.name}');
       },
     );
   }

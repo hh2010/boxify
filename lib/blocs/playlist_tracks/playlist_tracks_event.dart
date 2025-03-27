@@ -42,22 +42,16 @@ class RemoveTrackFromPlaylist extends PlaylistTracksEvent {
 class AddTrackToPlaylist extends PlaylistTracksEvent {
   final Track track;
   final Playlist playlist;
-  // final String userId;
+  final bool forceAdd;
 
   const AddTrackToPlaylist({
     required this.track,
     required this.playlist,
-    // required this.userId,
+    this.forceAdd = false,
   });
 
   @override
-  List<Object?> get props => [track, playlist];
-
-  // const AddTrackToPlaylist(
-  //     {required this.track, required this.playlist, required this.userId});
-
-  // @override
-  // List<Object?> get props => [track, playlist, userId];
+  List<Object?> get props => [track, playlist, forceAdd];
 }
 
 class CreatePlaylistWithTrack extends PlaylistTracksEvent {

@@ -14,27 +14,21 @@ class EditPlaylistScreen extends StatefulWidget {
 class _EditPlaylistScreenState extends State<EditPlaylistScreen>
     with EditPlaylistMixin {
   List<Track> _localTracks = [];
+  List<Track> _originalTracks = []; // Store original tracks for comparison
 
   @override
   void initState() {
     super.initState();
     final trackBloc = context.read<TrackBloc>();
-    _localTracks = List<Track>.from(trackBloc.state.displayedTracks);
+    _originalTracks = List<Track>.from(trackBloc.state.displayedTracks);
+    _localTracks = List<Track>.from(_originalTracks);
   }
 
   void _deleteTrack(Playlist playlist, Track track, int index) {
-    // Update database
-    context.read<PlaylistTracksBloc>().add(
-      RemoveTrackFromPlaylist(playlist: playlist, index: index)
-    );
-
-    // Update UI immediately
+    // Only update UI, not database
     setState(() {
       _localTracks.removeAt(index);
     });
-
-    // Update player state
-    _updatePlayerState(playlist);
   }
 
   void _reorderTracks(Playlist playlist, int oldIndex, int newIndex) {
@@ -43,32 +37,18 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
       newIndex -= 1;
     }
 
-    // Update database
-    context.read<PlaylistTracksBloc>().add(
-      MoveTrack(
-        playlist: playlist,
-        oldIndex: oldIndex,
-        newIndex: newIndex
-      )
-    );
-
-    // Update UI immediately
     setState(() {
       final track = _localTracks.removeAt(oldIndex);
       _localTracks.insert(newIndex, track);
     });
-    
-    // Update player state
-    _updatePlayerState(playlist);
   }
 
-  // Helper method to update player state
-  void _updatePlayerState(Playlist playlist) {
+  void _updatePlayerState(Playlist updatedPlaylist) {
     final playerBloc = context.read<PlayerBloc>();
-    if (playlist.id != null) {
+    if (updatedPlaylist.id != null) {
       playerBloc.add(PlaylistEdited(
         updatedTracks: _localTracks,
-        playlistId: playlist.id!,
+        playlistId: updatedPlaylist.id!,
       ));
     }
   }
@@ -83,64 +63,143 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
         ? playlist.description.toString()
         : 'Add description';
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Core.appColor.widgetBackgroundColor,
-        leading: IconButton(
-          icon: Icon(Icons.close),
-          onPressed: () => Navigator.pop(context),
-        ),
-        centerTitle: true,
-        title: Text(
-          "editPlaylist".translate(),
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => _savePlaylist(context, playlist),
-            child: Text(
-              "save".translate(),
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
+    return WillPopScope(
+      onWillPop: () async {
+        // If changes were made, reset to original tracks
+        if (!_areListsEqual(_localTracks, _originalTracks)) {
+          // Reset displayed tracks to original
+          context
+              .read<TrackBloc>()
+              .add(UpdateDisplayedTracks(tracks: _originalTracks));
+        }
+        return true;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Core.appColor.widgetBackgroundColor,
+          leading: IconButton(
+            icon: Icon(Icons.close),
+            onPressed: () {
+              // Reset to original tracks when closing without saving
+              if (!_areListsEqual(_localTracks, _originalTracks)) {
+                context
+                    .read<TrackBloc>()
+                    .add(UpdateDisplayedTracks(tracks: _originalTracks));
+              }
+              Navigator.pop(context);
+            },
           ),
-        ],
+          centerTitle: true,
+          title: Text(
+            "editPlaylist".translate(),
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => _savePlaylist(context, playlist),
+              child: Text(
+                "save".translate(),
+                style:
+                    TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        body: _buildBody(context, playlist),
       ),
-      body: _buildBody(context, playlist),
     );
   }
-  
+
   void _savePlaylist(BuildContext context, Playlist playlist) {
     if (titleController.text.isEmpty) return;
 
     final updatedPlaylist = playlist.copyWith(
       displayTitle: titleController.text,
       description: descriptionController.text,
-      trackIds: _localTracks.map((t) => t.uuid!).toList(), // Ensure deleted tracks are removed
+      trackIds: _localTracks.map((t) => t.uuid!).toList(),
     );
-    
+
     // Save playlist to database
-    context.read<PlaylistInfoBloc>().add(
-      kIsWeb 
-          ? SubmitOnWeb(
-              playlist: updatedPlaylist,
-              description: descriptionController.text,
-              name: titleController.text,
-              userId: context.read<UserBloc>().state.user.id,
-            )
-          : Submit(
-              playlist: updatedPlaylist,
-              description: descriptionController.text,
-              name: titleController.text,
-              userId: context.read<UserBloc>().state.user.id,
-            )
-    );
-    
+    context.read<PlaylistInfoBloc>().add(kIsWeb
+        ? SubmitOnWeb(
+            playlist: updatedPlaylist,
+            description: descriptionController.text,
+            name: titleController.text,
+            userId: context.read<UserBloc>().state.user.id,
+          )
+        : Submit(
+            playlist: updatedPlaylist,
+            description: descriptionController.text,
+            name: titleController.text,
+            userId: context.read<UserBloc>().state.user.id,
+          ));
+
+    // Apply track changes to database
+    _applyTrackChangesToDatabase(playlist);
+
     _updatePlayerState(updatedPlaylist);
     context.read<TrackBloc>().add(UpdateDisplayedTracks(tracks: _localTracks));
-    context.read<PlaylistBloc>().add(SetViewedPlaylist(playlist: updatedPlaylist));
-    context.read<TrackBloc>().add(LoadDisplayedTracks(playlist: updatedPlaylist));
+    context
+        .read<PlaylistBloc>()
+        .add(SetViewedPlaylist(playlist: updatedPlaylist));
+    context
+        .read<TrackBloc>()
+        .add(LoadDisplayedTracks(playlist: updatedPlaylist));
 
     Navigator.of(context, rootNavigator: true).pop();
+  }
+
+  // Apply track changes to the database only when saving
+  void _applyTrackChangesToDatabase(Playlist playlist) {
+    final playlistTracksBloc = context.read<PlaylistTracksBloc>();
+
+    // Calculate the tracks that were removed
+    final removedTracks = _getDeletedTracks(_originalTracks, _localTracks);
+
+    // Remove tracks from database
+    for (int i = 0; i < removedTracks.length; i++) {
+      final track = removedTracks[i];
+      final originalIndex =
+          _originalTracks.indexWhere((t) => t.uuid == track.uuid);
+      if (originalIndex != -1) {
+        playlistTracksBloc.add(
+            RemoveTrackFromPlaylist(playlist: playlist, index: originalIndex));
+      }
+    }
+
+    // Apply track reordering if needed
+    // This is simplified and might need more complex logic for reordering
+    if (_originalTracks.length == _localTracks.length &&
+        !_areListsEqual(_originalTracks, _localTracks)) {
+      for (int i = 0; i < _localTracks.length; i++) {
+        final originalIndex =
+            _originalTracks.indexWhere((t) => t.uuid == _localTracks[i].uuid);
+        if (originalIndex != i) {
+          playlistTracksBloc.add(MoveTrack(
+              playlist: playlist, oldIndex: originalIndex, newIndex: i));
+        }
+      }
+    }
+  }
+
+  // Helper method to get tracks that were deleted
+  List<Track> _getDeletedTracks(List<Track> original, List<Track> current) {
+    return original.where((track) {
+      return !current.any((t) => t.uuid == track.uuid);
+    }).toList();
+  }
+
+  // Helper method to check if two track lists are equal
+  bool _areListsEqual(List<Track> list1, List<Track> list2) {
+    if (list1.length != list2.length) return false;
+
+    for (int i = 0; i < list1.length; i++) {
+      if (list1[i].uuid != list2[i].uuid) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   Widget _buildBody(BuildContext context, Playlist playlist) {
@@ -218,7 +277,8 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
       physics: NeverScrollableScrollPhysics(),
       buildDefaultDragHandles: false,
       shrinkWrap: true,
-      onReorder: (oldIndex, newIndex) => _reorderTracks(playlist, oldIndex, newIndex),
+      onReorder: (oldIndex, newIndex) =>
+          _reorderTracks(playlist, oldIndex, newIndex),
       itemCount: _localTracks.length,
       itemBuilder: (context, index) {
         final track = _localTracks[index];

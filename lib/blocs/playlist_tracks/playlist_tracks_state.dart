@@ -4,7 +4,7 @@ enum PlaylistTracksStatus {
   initial,
   updating,
   updated,
-
+  duplicate,
   error,
 }
 
@@ -12,6 +12,7 @@ class PlaylistTracksState extends Equatable {
   final PlaylistTracksStatus status;
   final Failure failure;
   final Track? trackToAdd;
+  final Track? duplicateTrack;
   final Playlist? updatedPlaylist;
   Playlist? viewedPlaylist; // The viewedPlaylist you're currently viewing
   Playlist?
@@ -30,6 +31,7 @@ class PlaylistTracksState extends Equatable {
     required this.playlistImage,
     required this.youJustCreatedANewPlaylist,
     required this.playlistToRemove,
+    this.duplicateTrack,
   });
 
   factory PlaylistTracksState.initial() {
@@ -43,6 +45,7 @@ class PlaylistTracksState extends Equatable {
       playlistImage: null,
       youJustCreatedANewPlaylist: false,
       playlistToRemove: '',
+      duplicateTrack: null,
     );
   }
 
@@ -51,21 +54,20 @@ class PlaylistTracksState extends Equatable {
         status,
         failure,
         trackToAdd,
+        duplicateTrack,
         updatedPlaylist,
         viewedPlaylist,
+        enquedPlaylist,
         playlistImage,
-        viewedPlaylist,
         youJustCreatedANewPlaylist,
         playlistToRemove,
-        viewedPlaylist,
-        playlistImage,
-        viewedPlaylist,
       ];
 
   PlaylistTracksState copyWith({
     PlaylistTracksStatus? status,
     Failure? failure,
     Track? trackToAdd,
+    Track? duplicateTrack,
     Playlist? updatedPlaylist,
     Playlist? viewedPlaylist,
     Playlist? enquedPlaylist,
@@ -77,6 +79,7 @@ class PlaylistTracksState extends Equatable {
       status: status ?? this.status,
       failure: failure ?? this.failure,
       trackToAdd: trackToAdd ?? this.trackToAdd,
+      duplicateTrack: duplicateTrack ?? this.duplicateTrack,
       updatedPlaylist: updatedPlaylist ?? this.updatedPlaylist,
       viewedPlaylist: viewedPlaylist ?? this.viewedPlaylist,
       enquedPlaylist: enquedPlaylist ?? this.enquedPlaylist,

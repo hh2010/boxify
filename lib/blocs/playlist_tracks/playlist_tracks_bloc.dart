@@ -45,6 +45,21 @@ class PlaylistTracksBloc
 
     final playlist = event.playlist;
 
+    // Check if the track already exists in the playlist - skip check if forceAdd is true
+    final bool isDuplicate = !event.forceAdd &&
+        event.track.uuid != null &&
+        playlist.trackIds.contains(event.track.uuid);
+
+    if (isDuplicate) {
+      // Emit a duplicate state so the UI can show a warning
+      emit(state.copyWith(
+        status: PlaylistTracksStatus.duplicate,
+        duplicateTrack: event.track,
+        updatedPlaylist: playlist,
+      ));
+      return;
+    }
+
     try {
       // Perform the operation to add the track to the playlist
       await _playlistRepository.addTrackToPlaylist(

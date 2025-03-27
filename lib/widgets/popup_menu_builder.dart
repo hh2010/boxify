@@ -38,14 +38,41 @@ class PopupMenuBuilder {
     // final PlaylistBloc = context.read<PlaylistBloc>() as PlaylistBloc;
     return PopupMenuItem<String>(
       onTap: () {
-        // remove it from the library
-        context.read<LibraryBloc>().add(RemovePlaylist(
-            playlist: playlist, user: context.read<UserBloc>().state.user));
-        context
-            .read<LibraryBloc>()
-            .add(DeletePlaylist(playlistId: playlist.id!));
-        ScaffoldMessenger.of(context)
-            .showSnackBar(buildSnackbar('playlistDeleted'.translate()));
+        // Show confirmation dialog before deleting
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text('deletePlaylist'.translate()),
+              content: Text('areYouSureDeletePlaylist'
+                  .translate()), // Add this to translation files
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog
+                  },
+                  child: Text('cancel'.translate()),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog
+
+                    // Delete the playlist
+                    context.read<LibraryBloc>().add(RemovePlaylist(
+                        playlist: playlist,
+                        user: context.read<UserBloc>().state.user));
+                    context
+                        .read<LibraryBloc>()
+                        .add(DeletePlaylist(playlistId: playlist.id!));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        buildSnackbar('playlistDeleted'.translate()));
+                  },
+                  child: Text('delete'.translate()),
+                ),
+              ],
+            );
+          },
+        );
       },
       child: Text('delete'.translate()),
     );
