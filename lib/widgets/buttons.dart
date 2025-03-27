@@ -254,7 +254,6 @@ class LogOutButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final artistBloc = context.read<ArtistBloc>();
-    final userBloc = context.read<UserBloc>();
     if ((!artistBloc.state.isCurrentUser ||
         artistBloc.state.user.username == 'Lurker')) {
       return const SizedBox.shrink();
@@ -263,12 +262,8 @@ class LogOutButton extends StatelessWidget {
       icon: const Icon(Icons.exit_to_app),
       onPressed: () {
         logger.f('logout');
-
-        // Reset player state before logging out
         context.read<PlayerBloc>().add(PlayerReset());
-
         context.read<AuthBloc>().add(AuthLogoutRequested());
-
         GoRouter.of(context).go(
           '/login',
         );
@@ -360,6 +355,7 @@ Center logInButton(BuildContext context) {
           /// If you don't log out first, the authStatus will never be unauthenticated
           /// and the resetting of the blocs will never be triggered in the myapp.authBloc listener
           context.read<AuthBloc>().add(AuthLogoutRequested());
+          context.read<PlayerBloc>().add(PlayerReset());
         },
         child: Text('logIn'.translate()),
       ),
