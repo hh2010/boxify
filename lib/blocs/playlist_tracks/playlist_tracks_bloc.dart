@@ -25,6 +25,7 @@ class PlaylistTracksBloc
     on<RemoveTrackFromPlaylist>(_onRemoveTrackFromPlaylist);
     on<MoveTrack>(_onMoveTrack);
     on<PlaylistTracksReset>(_onPlaylistTracksReset);
+    on<UpdatePlaylistTracks>(_onUpdatePlaylistTracks);
   }
 
   Future<void> _onPlaylistTracksReset(
@@ -185,5 +186,51 @@ class PlaylistTracksBloc
         trackToAdd: event.track,
       ),
     );
+  }
+
+  Future<void> _onUpdatePlaylistTracks(
+    UpdatePlaylistTracks event,
+    Emitter<PlaylistTracksState> emit,
+  ) async {
+    logger.i('_onUpdatePlaylistTracks: Updating all tracks at once');
+    emit(state.copyWith(status: PlaylistTracksStatus.updating));
+
+    final playlist = event.playlist;
+    final trackIds = event.trackIds;
+
+    try {
+      // Update the playlist's track sequence with the new complete list of track IDs
+      await _playlistRepository.setPlaylistSequence(
+        playlistId: playlist.id!,
+        trackIds: trackIds,
+      );
+
+      // Create an updated playlist with the new tracks
+      Playlist updatedPlaylist = playlist.copyWith(
+        trackIds: trackIds,
+        total: trackIds.length,
+        updated: Timestamp.fromDate(DateTime.now()),
+      );
+
+      // Emit the new state with the updated playlist
+      emit(
+        state.copyWith(
+          updatedPlaylist: updatedPlaylist,
+          status: PlaylistTracksStatus.updated,
+        ),
+      );
+      logger.i('_onUpdatePlaylistTracks: Successfully updated playlist tracks');
+    } catch (e) {
+      // Log the error
+      logger.e('Failed to update playlist tracks: $e');
+
+      // Emit the error state
+      emit(
+        state.copyWith(
+          status: PlaylistTracksStatus.error,
+          failure: Failure(message: 'Failed to update playlist tracks: $e'),
+        ),
+      );
+    }
   }
 }

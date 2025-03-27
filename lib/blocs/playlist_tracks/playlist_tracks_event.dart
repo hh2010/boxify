@@ -39,6 +39,22 @@ class RemoveTrackFromPlaylist extends PlaylistTracksEvent {
   List<Object?> get props => [playlist, index];
 }
 
+class UpdatePlaylistTracks extends PlaylistTracksEvent {
+  final Playlist playlist;
+  final List<String> trackIds;
+
+  /// Updates all tracks in a playlist at once, replacing the current track list
+  /// This is more reliable than individual add/remove operations when multiple changes
+  /// have been made to a playlist's tracks
+  const UpdatePlaylistTracks({
+    required this.playlist,
+    required this.trackIds,
+  });
+
+  @override
+  List<Object?> get props => [playlist, trackIds];
+}
+
 class AddTrackToPlaylist extends PlaylistTracksEvent {
   final Track track;
   final Playlist playlist;

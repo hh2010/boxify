@@ -156,29 +156,18 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
     // Calculate the tracks that were removed
     final removedTracks = _getDeletedTracks(_originalTracks, _localTracks);
 
-    // Remove tracks from database
-    for (int i = 0; i < removedTracks.length; i++) {
-      final track = removedTracks[i];
-      final originalIndex =
-          _originalTracks.indexWhere((t) => t.uuid == track.uuid);
-      if (originalIndex != -1) {
-        playlistTracksBloc.add(
-            RemoveTrackFromPlaylist(playlist: playlist, index: originalIndex));
-      }
-    }
-
-    // Apply track reordering if needed
-    // This is simplified and might need more complex logic for reordering
-    if (_originalTracks.length == _localTracks.length &&
+    // First, completely update the track IDs in the playlist to match our current local list
+    // This is the most reliable approach to ensure correct track order and removal
+    if (_originalTracks.length != _localTracks.length ||
         !_areListsEqual(_originalTracks, _localTracks)) {
-      for (int i = 0; i < _localTracks.length; i++) {
-        final originalIndex =
-            _originalTracks.indexWhere((t) => t.uuid == _localTracks[i].uuid);
-        if (originalIndex != i) {
-          playlistTracksBloc.add(MoveTrack(
-              playlist: playlist, oldIndex: originalIndex, newIndex: i));
-        }
-      }
+      // Get the final list of track IDs
+      final List<String> trackIds = _localTracks.map((t) => t.uuid!).toList();
+
+      // Update the entire playlist's track order
+      playlistTracksBloc.add(UpdatePlaylistTracks(
+        playlist: playlist,
+        trackIds: trackIds,
+      ));
     }
   }
 
