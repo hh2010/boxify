@@ -1,6 +1,7 @@
 import 'package:boxify/app_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 class PopupMenuBuilder {
   static PopupMenuItem<String> buildAddPlaylistToLibraryPopupMenuItem(
@@ -64,6 +65,10 @@ class PopupMenuBuilder {
                     context
                         .read<LibraryBloc>()
                         .add(DeletePlaylist(playlistId: playlist.id!));
+
+                    // Navigate to home screen
+                    GoRouter.of(context).go('/');
+
                     ScaffoldMessenger.of(context).showSnackBar(
                         buildSnackbar('playlistDeleted'.translate()));
                   },

@@ -137,12 +137,16 @@ class DeletePlaylistTile extends StatelessWidget {
                           ),
                         );
 
-                    // Close the overflow screen
-                    if (context.mounted) {
+                    // Close any open modals or dialogs
+                    if (context.mounted && context.canPop()) {
                       context.pop();
-                      showMySnack(context,
-                          message: 'Deleted ${playlist.name} playlist');
                     }
+
+                    // Navigate to home screen
+                    GoRouter.of(context).go('/');
+
+                    showMySnack(context,
+                        message: 'Deleted ${playlist.name} playlist');
                   },
                   child: Text('delete'.translate()),
                 ),
