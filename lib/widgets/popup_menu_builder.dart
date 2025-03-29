@@ -1,4 +1,6 @@
 import 'package:boxify/app_core.dart';
+import 'package:boxify/utils/dialog_utils.dart';
+import 'package:boxify/utils/playlist_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -36,48 +38,14 @@ class PopupMenuBuilder {
 
   static PopupMenuItem<String> buildDeletePlaylistPopupMenuItem(
       BuildContext context, Playlist playlist) {
-    // final PlaylistBloc = context.read<PlaylistBloc>() as PlaylistBloc;
     return PopupMenuItem<String>(
       onTap: () {
-        // Show confirmation dialog before deleting
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text('deletePlaylist'.translate()),
-              content: Text('areYouSureDeletePlaylist'
-                  .translate()), // Add this to translation files
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Close dialog
-                  },
-                  child: Text('cancel'.translate()),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Close dialog
-
-                    // Delete the playlist
-                    context.read<LibraryBloc>().add(RemovePlaylist(
-                        playlist: playlist,
-                        user: context.read<UserBloc>().state.user));
-                    context
-                        .read<LibraryBloc>()
-                        .add(DeletePlaylist(playlistId: playlist.id!));
-
-                    // Navigate to home screen
-                    GoRouter.of(context).go('/');
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        buildSnackbar('playlistDeleted'.translate()));
-                  },
-                  child: Text('delete'.translate()),
-                ),
-              ],
-            );
-          },
-        );
+        DialogUtils.showDeletePlaylistConfirmation(context, playlist)
+            .then((confirmed) {
+          if (confirmed == true && context.mounted) {
+            PlaylistUtils.deletePlaylist(context, playlist);
+          }
+        });
       },
       child: Text('delete'.translate()),
     );

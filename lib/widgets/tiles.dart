@@ -1,4 +1,6 @@
 import 'package:boxify/app_core.dart';
+import 'package:boxify/utils/dialog_utils.dart';
+import 'package:boxify/utils/playlist_utils.dart';
 import 'package:charcode/charcode.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -51,9 +53,6 @@ class AddTrackToPlaylistTile extends StatelessWidget {
   }
 }
 
-/// TODO: should nav you to a
-/// screen where you can select
-/// tracks to add to a playlist
 class AddToThisPlaylistTile extends StatelessWidget {
   const AddToThisPlaylistTile({
     super.key,
@@ -106,54 +105,12 @@ class DeletePlaylistTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       onTap: () {
-        // Show confirmation dialog before deleting
-        showDialog(
-          context: context,
-          builder: (BuildContext dialogContext) {
-            return AlertDialog(
-              title: Text('deletePlaylist'.translate()),
-              content: Text('areYouSureDeletePlaylist'.translate()),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-                  },
-                  child: Text('cancel'.translate()),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-
-                    // Delete the playlist
-                    context.read<LibraryBloc>().add(
-                          RemovePlaylist(
-                            playlist: playlist,
-                            user: context.read<UserBloc>().state.user,
-                          ),
-                        );
-                    context.read<LibraryBloc>().add(
-                          DeletePlaylist(
-                            playlistId: playlist.id!,
-                          ),
-                        );
-
-                    // Close any open modals or dialogs
-                    if (context.mounted && context.canPop()) {
-                      context.pop();
-                    }
-
-                    // Navigate to home screen
-                    GoRouter.of(context).go('/');
-
-                    showMySnack(context,
-                        message: 'Deleted ${playlist.name} playlist');
-                  },
-                  child: Text('delete'.translate()),
-                ),
-              ],
-            );
-          },
-        );
+        DialogUtils.showDeletePlaylistConfirmation(context, playlist)
+            .then((confirmed) {
+          if (confirmed == true && context.mounted) {
+            PlaylistUtils.deletePlaylist(context, playlist);
+          }
+        });
       },
       leading: const Icon(
         Icons.cancel_outlined,
@@ -337,65 +294,7 @@ class PlaylistToBeAddedToTile extends StatelessWidget {
 
     return BlocConsumer<PlaylistTracksBloc, PlaylistTracksState>(
       listenWhen: (previous, current) => previous.status != current.status,
-      listener: (context, state) {
-        // Show dialog when duplicate track is detected
-        if (state.status == PlaylistTracksStatus.duplicate) {
-          // Build the dialog outside of this scope to avoid context issues
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            showDialog(
-              context: context,
-              builder: (BuildContext dialogContext) {
-                final trackTitle =
-                    state.duplicateTrack?.displayTitle ?? 'This track';
-                final playlistName =
-                    playlist.name ?? playlist.displayTitle ?? 'this playlist';
-                return AlertDialog(
-                  title: Text('duplicateTrack'.translate()),
-                  content: Text('duplicateTrackWarning'
-                      .translate()
-                      .replaceAll('{trackTitle}',
-                          state.duplicateTrack?.displayTitle ?? 'This track')
-                      .replaceAll(
-                          '{playlistName}',
-                          playlist.name ??
-                              playlist.displayTitle ??
-                              'this playlist')),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(dialogContext).pop();
-                        context
-                            .read<PlaylistTracksBloc>()
-                            .add(PlaylistTracksReset());
-                      },
-                      child: Text('cancel'.translate()),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(dialogContext).pop();
-                        // Force add the track anyway
-                        context.read<PlaylistTracksBloc>().add(
-                              AddTrackToPlaylist(
-                                playlist: playlist,
-                                track: state.trackToAdd!,
-                                forceAdd: true,
-                              ),
-                            );
-                        if (context.mounted) {
-                          context.pop();
-                          showMySnack(context,
-                              message: 'Added to ${playlist.name}');
-                        }
-                      },
-                      child: Text('addAnyway'.translate()),
-                    ),
-                  ],
-                );
-              },
-            );
-          });
-        }
-      },
+      listener: _handleDuplicateTrackState,
       builder: (context, playlistTracksState) {
         return ListTile(
           key: Key('${playlist.id}'),
@@ -449,6 +348,33 @@ class PlaylistToBeAddedToTile extends StatelessWidget {
         );
       },
     );
+  }
+
+  void _handleDuplicateTrackState(
+      BuildContext context, PlaylistTracksState state) {
+    if (state.status == PlaylistTracksStatus.duplicate) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        DialogUtils.showDuplicateTrackConfirmation(
+                context, state.duplicateTrack!, playlist)
+            .then((addAnyway) {
+          if (addAnyway == true) {
+            context.read<PlaylistTracksBloc>().add(
+                  AddTrackToPlaylist(
+                    playlist: playlist,
+                    track: state.trackToAdd!,
+                    forceAdd: true,
+                  ),
+                );
+            if (context.mounted) {
+              context.pop();
+              showMySnack(context, message: 'Added to ${playlist.name}');
+            }
+          } else {
+            context.read<PlaylistTracksBloc>().add(PlaylistTracksReset());
+          }
+        });
+      });
+    }
   }
 }
 

@@ -1,4 +1,5 @@
 import 'package:boxify/app_core.dart';
+import 'package:boxify/utils/playlist_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -58,55 +59,63 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
     final playlistBloc = context.watch<PlaylistBloc>();
     final playlist = playlistBloc.state.editingPlaylist ?? Playlist.empty;
 
+    _initializeControllers(playlist);
+
+    return WillPopScope(
+      onWillPop: _handleWillPop,
+      child: Scaffold(
+        appBar: _buildAppBar(context, playlist),
+        body: _buildBody(context, playlist),
+      ),
+    );
+  }
+
+  void _initializeControllers(Playlist playlist) {
     titleController.text = playlist.displayTitle ?? 'Playlist name';
     descriptionController.text = playlist.description!.isNotEmpty
         ? playlist.description.toString()
         : 'Add description';
+  }
 
-    return WillPopScope(
-      onWillPop: () async {
-        // If changes were made, reset to original tracks
-        if (!_areListsEqual(_localTracks, _originalTracks)) {
-          // Reset displayed tracks to original
-          context
-              .read<TrackBloc>()
-              .add(UpdateDisplayedTracks(tracks: _originalTracks));
-        }
-        return true;
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: Core.appColor.widgetBackgroundColor,
-          leading: IconButton(
-            icon: Icon(Icons.close),
-            onPressed: () {
-              // Reset to original tracks when closing without saving
-              if (!_areListsEqual(_localTracks, _originalTracks)) {
-                context
-                    .read<TrackBloc>()
-                    .add(UpdateDisplayedTracks(tracks: _originalTracks));
-              }
-              Navigator.pop(context);
-            },
-          ),
-          centerTitle: true,
-          title: Text(
-            "editPlaylist".translate(),
-            textAlign: TextAlign.center,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => _savePlaylist(context, playlist),
-              child: Text(
-                "save".translate(),
-                style:
-                    TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        body: _buildBody(context, playlist),
+  Future<bool> _handleWillPop() async {
+    // Reset displayed tracks to original if changes were made
+    if (!PlaylistUtils.areTracksEqual(_localTracks, _originalTracks)) {
+      context
+          .read<TrackBloc>()
+          .add(UpdateDisplayedTracks(tracks: _originalTracks));
+    }
+    return true;
+  }
+
+  PreferredSizeWidget _buildAppBar(BuildContext context, Playlist playlist) {
+    return AppBar(
+      backgroundColor: Core.appColor.widgetBackgroundColor,
+      leading: IconButton(
+        icon: Icon(Icons.close),
+        onPressed: () {
+          // Reset to original tracks when closing without saving
+          if (!PlaylistUtils.areTracksEqual(_localTracks, _originalTracks)) {
+            context
+                .read<TrackBloc>()
+                .add(UpdateDisplayedTracks(tracks: _originalTracks));
+          }
+          Navigator.pop(context);
+        },
       ),
+      centerTitle: true,
+      title: Text(
+        "editPlaylist".translate(),
+        textAlign: TextAlign.center,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => _savePlaylist(context, playlist),
+          child: Text(
+            "save".translate(),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
     );
   }
 
@@ -154,12 +163,13 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
     final playlistTracksBloc = context.read<PlaylistTracksBloc>();
 
     // Calculate the tracks that were removed
-    final removedTracks = _getDeletedTracks(_originalTracks, _localTracks);
+    final removedTracks =
+        PlaylistUtils.getDeletedTracks(_originalTracks, _localTracks);
 
     // First, completely update the track IDs in the playlist to match our current local list
     // This is the most reliable approach to ensure correct track order and removal
     if (_originalTracks.length != _localTracks.length ||
-        !_areListsEqual(_originalTracks, _localTracks)) {
+        !PlaylistUtils.areTracksEqual(_originalTracks, _localTracks)) {
       // Get the final list of track IDs
       final List<String> trackIds = _localTracks.map((t) => t.uuid!).toList();
 
@@ -169,26 +179,6 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
         trackIds: trackIds,
       ));
     }
-  }
-
-  // Helper method to get tracks that were deleted
-  List<Track> _getDeletedTracks(List<Track> original, List<Track> current) {
-    return original.where((track) {
-      return !current.any((t) => t.uuid == track.uuid);
-    }).toList();
-  }
-
-  // Helper method to check if two track lists are equal
-  bool _areListsEqual(List<Track> list1, List<Track> list2) {
-    if (list1.length != list2.length) return false;
-
-    for (int i = 0; i < list1.length; i++) {
-      if (list1[i].uuid != list2[i].uuid) {
-        return false;
-      }
-    }
-
-    return true;
   }
 
   Widget _buildBody(BuildContext context, Playlist playlist) {
@@ -210,16 +200,14 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen>
       onTap: () => selectPlaylistImage(context),
       child: Column(
         children: [
-          BlocBuilder<PlaylistBloc, PlaylistState>(
-            builder: (context, state) {
-              return Container(
-                height: 120,
-                width: 120,
-                color: Colors.grey[900],
-                child: imageForEditDetails(playlist),
-              );
-            },
-          ),
+          BlocBuilder<PlaylistBloc, PlaylistState>(builder: (context, state) {
+            return Container(
+              height: 120,
+              width: 120,
+              color: Colors.grey[900],
+              child: imageForEditDetails(playlist),
+            );
+          }),
           sizedBox12,
           Text(
             "changeImage".translate(),
